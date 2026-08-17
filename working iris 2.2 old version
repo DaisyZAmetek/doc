@@ -1,0 +1,25 @@
+; Simplified Iris Automation - No UIAWrappers needed
+; Using short path for Iris.exe as well
+Local $irisPath = "C:\PROGRA~2\Virtek\Iris\Iris.exe"
+; Case 2.2 - Opening Iris (No UIAWrappers needed)
+Local $windowTitle = "Virtek Iris" 
+
+; 1. Launch Iris
+Run($irisPath)
+If @error Then Exit
+
+; 2. Wait for Iris to appear
+WinWait($windowTitle, "", 60)
+WinActivate($windowTitle)
+Sleep(2000)
+
+; 3. Trigger the "Open Work Order" dialog
+Send("^o") ; Ctrl + O
+WinWaitActive("Select Work Order", "", 10)
+Sleep(1000)
+
+; 4. Select the tool
+Send("LargeTool1")
+Send("{ENTER}")
+
+; The Arduino will cut the power shortly after this point for Case 2.2
