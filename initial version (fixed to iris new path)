@@ -1,0 +1,80 @@
+ou#include <MsgBoxConstants.au3>
+#include "UIAWrappers.au3"
+
+Run("C:\Program Files\Virtek\Virtek Iris Client\VirtekIrisClient.exe")
+
+If @error Then
+   MsgBox($MB_SYSTEMMODAL, "Iris", "Error opening Iris Error code: " & @error)
+   Exit
+EndIf
+
+; Wait 2 minutes for the Iris to open.
+WinWait("Virtek Iris Dev Release, Internal Use Only!", "", 120)
+
+Sleep(3000)
+
+AutoItSetOption("MustDeclareVars", 1)
+
+Local $oP0=_UIA_getObjectByFindAll($UIA_oDesktop, "Title:=Virtek Iris Dev Release, Internal Use Only!;controltype:=UIA_WindowControlTypeId;class:=Window", $treescope_children)
+_UIA_Action($oP0,"setfocus")
+Local $oP1=_UIA_getObjectByFindAll($oP0, "Title:=;controltype:=UIA_MenuControlTypeId;class:=Menu", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll(".mainwindow", "title:=;ControlType:=UIA_MenuItemControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP1, "title:=;ControlType:=UIA_MenuItemControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
+
+Local $oP2=_UIA_getObjectByFindAll($oP1, "Title:=;controltype:=UIA_MenuItemControlTypeId;class:=MenuItem", $treescope_children)
+Local $oP3=_UIA_getObjectByFindAll($oP2, "Title:=Open;controltype:=UIA_MenuItemControlTypeId;class:=MenuItem", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll("_Open.mainwindow", "title:=_Open;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP2, "title:=_Open;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
+
+Local $oP4=_UIA_getObjectByFindAll($oP0, "Title:=Select Work Order;controltype:=UIA_WindowControlTypeId;class:=Window", $treescope_children)
+_UIA_Action($oP3,"setfocus")
+Local $oP5=_UIA_getObjectByFindAll($oP4, "Title:=;controltype:=UIA_DataGridControlTypeId;class:=ListView", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll("LargeTool1.mainwindow", "title:=LargeTool1;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP5, "title:=LargeTool1;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
+
+Local $oP6=_UIA_getObjectByFindAll($oP4, "Title:=OK;controltype:=UIA_ButtonControlTypeId;class:=Button", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll("OK.mainwindow", "title:=OK;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP6, "title:=OK;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
+
+Sleep(2000)
+
+Local $oP4=_UIA_getObjectByFindAll($UIA_oDesktop, "Title:=Virtek Iris, Work order:  LargeTool1 Dev Release, Internal Use Only!;controltype:=UIA_WindowControlTypeId;class:=Window", $treescope_children)
+_UIA_Action($oP4,"setfocus")
+Local $oP3=_UIA_getObjectByFindAll($oP4, "Title:=;controltype:=UIA_CustomControlTypeId;class:=ProjectorSelectionView", $treescope_children)
+Local $oP2=_UIA_getObjectByFindAll($oP3, "Title:=;controltype:=UIA_ListControlTypeId;class:=ListView", $treescope_children)
+Local $oP1=_UIA_getObjectByFindAll($oP2, "Title:=Virtek.Iris.Model.Projector;controltype:=UIA_ListItemControlTypeId;class:=ListBoxItem", $treescope_children)
+Local $oP0=_UIA_getObjectByFindAll($oP1, "Title:=040002;controltype:=UIA_ButtonControlTypeId;class:=Button", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll("040002.mainwindow", "title:=040002;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP0, "title:=040002;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
+
+;Sleep(5000)
+;MouseClick("left", 1840, 400)
+
+Sleep(3000)
+;MouseClick("left", 1840, 400)
+
+Local $oP3=_UIA_getObjectByFindAll($UIA_oDesktop, "Title:=Virtek Iris, Work order:  LargeTool1 Dev Release, Internal Use Only!;controltype:=UIA_WindowControlTypeId;class:=Window", $treescope_children)
+_UIA_Action($oP3,"setfocus")
+Local $oP2=_UIA_getObjectByFindAll($oP3, "Title:=;controltype:=UIA_CustomControlTypeId;class:=ProcessStepListView", $treescope_children)
+Local $oP1=_UIA_getObjectByFindAll($oP2, "Title:=;controltype:=UIA_TreeControlTypeId;class:=TreeView", $treescope_children)
+Local $oP0=_UIA_getObjectByFindAll($oP1, "Title:=<:[PlyProcessStep: Ply3]>;controltype:=UIA_TreeItemControlTypeId;class:=TreeViewItem", $treescope_children)
+;~ First find the object in the parent before you can do something
+;~$oUIElement=_UIA_getObjectByFindAll("Ply3.mainwindow", "title:=Ply3;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+Local $oUIElement=_UIA_getObjectByFindAll($oP0, "title:=Ply3;ControlType:=UIA_TextControlTypeId", $treescope_subtree)
+;~_UIA_action($oUIElement,"highlight")
+_UIA_action($oUIElement,"click")
