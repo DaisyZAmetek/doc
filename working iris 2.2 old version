@@ -19,7 +19,7 @@ WinWaitActive("Select Work Order", "", 10)
 Sleep(1000)
 
 ; 4. Select the tool
-Send("LargeTool1")
+Send("C:\Test Complete Work Orders\AA_LT5_4")
 Send("{ENTER}")
 
 ; The Arduino will cut the power shortly after this point for Case 2.2
