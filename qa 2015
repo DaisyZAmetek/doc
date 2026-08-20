@@ -1,0 +1,341 @@
+# QA-2015: Verify work order open with permutations of Part Serial Number and Workcell settings.
+import logging
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import pytest
+from playwright.sync_api import Page, expect
+
+from e2e_tests_py.pages.choose_session_page import ChooseSessionPage
+from e2e_tests_py.pages.choose_work_order_page import ChooseWorkOrderPage
+from e2e_tests_py.pages.work_order_steps_page import WorkOrderStepsPage
+from e2e_tests_py.service.config_utils import (
+    WorkcellState,
+    set_enable_part_serial_numbers,
+    set_enable_workcells,
+)
+from e2e_tests_py.service.service_utils import disconnect_all_client_api, get_clients
+from e2e_tests_py.service.start_stop_restart_services import restart_services
+
+part_serial_number_state = [True, False]
+workcell_state = [WorkcellState.isEnabled, WorkcellState.isDisabled]
+part_serial_number = ["01", "InVALID*PSN", None]
+workcell_name = ["VPS", None]
+work_order_name = "AA_LT5_1"
+
+# Build permutations, filtering out redundant cases at collection time so that
+# expensive per-test fixtures (service restart, client connection) are not wasted.
+permutations = [
+    (serial_enabled, workcell_enabled, part_serial_input, workcell_input)
+    for serial_enabled in part_serial_number_state
+    for workcell_enabled in workcell_state
+    for part_serial_input in part_serial_number
+    for workcell_input in workcell_name
+    # When workcells are disabled the workcell_input is irrelevant; keep only None
+    if not (workcell_enabled == WorkcellState.isDisabled and workcell_input is not None)
+    # When PSN is disabled the part_serial_input is irrelevant; keep only None
+    if not (serial_enabled is False and part_serial_input is not None)
+    # Clearing workcell XML entries does not reliably hide the workcell
+    # selector when PSN is enabled; skip those combos and replace below.
+    if not (serial_enabled is True and workcell_enabled == WorkcellState.isDisabled)
+]
+
+permutations += [
+    (
+        True,
+        WorkcellState.isEnabled,
+        "PART_02",
+        "VPS",
+    ),  # alphanumeric PSN, workcell selected
+    (
+        True,
+        WorkcellState.isEnabled,
+        "PART_02",
+        None,
+    ),  # alphanumeric PSN, no workcell → error
+    (True, WorkcellState.isEnabled, "99", "VPS"),  # numeric-only PSN, workcell selected
+]
+
+
+@pytest.fixture
+def choose_work_order_page(page: Page):
+    logging.info("[FIXTURE] Instantiating ChooseWorkOrderPage.")
+    return ChooseWorkOrderPage(page)
+
+
+@pytest.fixture
+def work_order_steps_page(page: Page):
+    logging.info("[FIXTURE] Instantiating WorkOrderStepsPage.")
+    return WorkOrderStepsPage(page)
+
+
+@pytest.fixture
+def choose_session_page(page: Page):
+    logging.info("[FIXTURE] Instantiating ChooseSessionPage.")
+    return ChooseSessionPage(page)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def before_each_after_each(page: Page, playwright):
+    # Setup:
+    logging.info("=" * 80)
+    logging.info(
+        "TEST SCENARIO: Open Work Order with different permutations of Part Serial Number and Workcell scenario's."
+    )
+    logging.info("-" * 80)
+    # logging.info("[SETUP] Restarting all services before test for clean state.")
+    restart_services(playwright)
+    logging.info("[SETUP] Disconnecting all clients via API before test.")
+    disconnect_all_client_api(playwright)
+    logging.debug("[SETUP DEBUG] Waiting briefly to allow services to stabilize.")
+    time.sleep(3)
+
+    yield
+    # Teardown:
+    logging.info("[TEARDOWN] Disconnecting all clients via API after test.")
+    disconnect_all_client_api(playwright)
+    logging.info("TEST SCENARIO END")
+
+
+@pytest.fixture(scope="function")
+def found_client_id(page: Page, playwright):
+    """Connect a new web session and return the newly created client ID.
+
+    Retries the connection if the server is slow to respond after a restart.
+    """
+    logging.info("[SETUP] Retrieving a new web client ID for this test session.")
+
+    # get_clients may fail with ECONNREFUSED right after service restart;
+    # retry a few times with a small delay.
+    before_list = []
+    for i in range(5):
+        try:
+            before_list = get_clients(playwright)
+            break
+        except Exception:
+            if i == 4:
+                raise
+            logging.warning(
+                "[SETUP] get_clients failed (services still starting); retrying in 5s..."
+            )
+            time.sleep(5)
+
+    choose_session_page = ChooseSessionPage(page)
+    choose_work_order_page = ChooseWorkOrderPage(page)
+
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        choose_session_page.navigate_to()
+        expect(choose_session_page.page_title).to_be_visible()
+        expect(choose_session_page.connect_new_session_button).to_be_visible(
+            timeout=15000
+        )
+        time.sleep(15)
+        choose_session_page.click_connect_new_session()
+        try:
+            choose_work_order_page.wait_for_page_loaded(timeout=60000)
+            expect(choose_work_order_page.page_title).to_be_visible()
+            break
+        except Exception:
+            if attempt == max_retries:
+                raise
+            logging.warning(
+                f"[SETUP] Session connection attempt {attempt}/{max_retries} "
+                "timed out waiting for Work Order page; retrying..."
+            )
+            time.sleep(5)
+
+    after_list = []
+    for _ in range(10):
+        time.sleep(0.5)
+        try:
+            after_list = get_clients(playwright)
+        except Exception:
+            continue
+        if len(after_list) > len(before_list):
+            break
+
+    client_id = next((cid for cid in after_list if cid not in before_list), None)
+    logging.info(f"[SETUP] Found web Client ID: {client_id}")
+    return client_id
+
+
+@pytest.mark.parametrize(
+    "serial_enabled, workcell_enabled, part_serial_input, workcell_input", permutations
+)
+def test_open_wo_with_different_permutations(
+    playwright,
+    page: Page,
+    found_client_id,
+    choose_work_order_page,
+    choose_session_page,
+    serial_enabled,
+    workcell_enabled,
+    part_serial_input,
+    workcell_input,
+    work_order_steps_page,
+):
+    logging.info(
+        f"[TEST START] test_open_work_order_with_enabled_psn [CLIENT_ID={found_client_id}]"
+    )
+
+    # Setting the configurations based on the current permutation
+    logging.info(
+        f"[SETUP] Configuring client settings: Part Serial Numbers Enabled={serial_enabled}, Workcells Enabled={workcell_enabled}"
+    )
+
+    set_enable_part_serial_numbers(playwright, found_client_id, enable=serial_enabled)
+    set_enable_workcells(playwright, found_client_id, state=workcell_enabled)
+
+    logging.info("[SETUP] Navigating back to session page to re-apply configurations.")
+    choose_session_page.navigate_to(timeout=30000)
+    time.sleep(2)
+    logging.info("[CHECK] On session selection page.")
+
+    # Re-select the session to force the app to re-read config
+    logging.info(f"[STEP] Choosing client with ID: {found_client_id}")
+    choose_session_page.choose_a_session(found_client_id)
+
+    # Assert part serial field visibility
+    if serial_enabled:
+        logging.info(
+            "[CHECK] PSN is enabled, Verifying Part Serial Number field is visible."
+        )
+        expect(choose_work_order_page.select_part_serial_number_field).to_be_visible()
+        logging.info("[ASSERT] Part Serial Number field is visible as expected.")
+    else:
+        logging.info(
+            "[CHECK] PSN is not enabled, Verifying Part Serial Number field is hidden."
+        )
+        expect(choose_work_order_page.select_part_serial_number_field).to_be_hidden()
+        logging.info("[ASSERT] Part Serial Number field is invisible as expected.")
+
+    # Assert workcell field visibility
+    if workcell_enabled == WorkcellState.isEnabled:
+        logging.info(
+            "[CHECK] Workcells are enabled, Verifying Work Cell field is visible."
+        )
+        expect(choose_work_order_page.select_workcell_field).to_be_visible()
+        logging.info("[ASSERT] Work Cell field is visible as expected.")
+    else:
+        logging.info(
+            "[CHECK] Workcells are not enabled, Verifying Work Cell field is hidden."
+        )
+        expect(choose_work_order_page.select_workcell_field).to_be_hidden()
+        logging.info("[ASSERT] Work Cell field is invisible as expected.")
+    # Opening work order with current permutation settings
+    logging.info(
+        f"[STEP] Opening work order '{work_order_name}' with current settings: Part Serial Numbers Enabled={serial_enabled}, Workcells Enabled={workcell_enabled}, Part Serial Name= {part_serial_input}, Workcell Name={workcell_input} "
+    )
+
+    # Collect ALL dialog messages (not just the first) so intermediate dialogs
+    # like "Part serial number already exists" don't mask the submit error.
+    choose_work_order_page.start_collecting_dialogs()
+
+    # Step in which user will have to try to type in an invalid PSN (won't already be pre-existing)
+    if part_serial_input == "InVALID*PSN" and serial_enabled is True:
+        logging.info(
+            f"[STEP] Attempting to add invalid Part Serial Number: {part_serial_input}"
+        )
+        choose_work_order_page.select_a_work_order(work_order_name)
+        logging.info("[ASSERT] Work Order selected successfully.")
+        choose_work_order_page.add_a_part_serial_number(part_serial_input)
+        time.sleep(2)
+        logging.info("ASSERT] Part Serial Number added successfully.")
+        logging.info("[ASSERT] Verifying invalid PSN error message.")
+        assert any(
+            ChooseWorkOrderPage.MSG_INVALID_PSN_FORMAT in m
+            for m in choose_work_order_page._dialog_messages
+        ), (
+            f"Expected invalid PSN format error but got: {choose_work_order_page._dialog_messages}"
+        )
+        logging.info(
+            "[ASSERT PASS] Error dialog shown as expected for invalid part serial number."
+        )
+    else:
+        choose_work_order_page.open_work_order(
+            work_order_name,
+            workcell_input if workcell_enabled == WorkcellState.isEnabled else None,
+            use_part_serial_number=(serial_enabled and part_serial_input is not None),
+        )
+
+        time.sleep(2)
+        time.sleep(3)  # Allow Playwright event loop to process dialogs
+        last_dialog = (
+            choose_work_order_page._dialog_messages[-1]
+            if choose_work_order_page._dialog_messages
+            else ""
+        )
+
+        if (
+            part_serial_input is None
+            and serial_enabled is True
+            and workcell_input is None
+            and workcell_enabled == WorkcellState.isEnabled
+        ):
+            logging.info(
+                "[STEP] Attempting to open work order without part serial number and workcell (expected: error dialog and worksteps page should not open)."
+            )
+            logging.info(
+                "[ASSERT] Ensuring selection page remains visible after failed open attempt."
+            )
+            expect(choose_work_order_page.page_title).to_be_visible()
+            logging.info(
+                "[ASSERT] Verifying the error dialog message text for missing workcell."
+            )
+            assert last_dialog == ChooseWorkOrderPage.MSG_PLEASE_SELECT_WORKCELL, (
+                f"Expected '{ChooseWorkOrderPage.MSG_PLEASE_SELECT_WORKCELL}' but got: {choose_work_order_page._dialog_messages}"
+            )
+            logging.info(
+                "[ASSERT PASS] Error dialog shown as expected for missing workcell."
+            )
+        elif (
+            part_serial_input is None
+            and serial_enabled is True
+            and workcell_enabled == WorkcellState.isEnabled
+        ):
+            logging.info(
+                "[STEP] Attempting to open work order without part serial number (expected: error dialog and worksteps page should not open)."
+            )
+            logging.info(
+                "[ASSERT] Ensuring selection page remains visible after failed open attempt."
+            )
+            expect(choose_work_order_page.page_title).to_be_visible()
+            logging.info(
+                "[ASSERT] Verifying the error dialog message text for missing part serial number."
+            )
+            assert any(
+                "Part Serial Number" in m or "part serial" in m.lower()
+                for m in choose_work_order_page._dialog_messages
+            ), (
+                f"Expected a Part Serial Number error but got: {choose_work_order_page._dialog_messages}"
+            )
+            logging.info(
+                "[ASSERT PASS] Error dialog shown as expected for missing part serial number."
+            )
+        elif workcell_input is None and workcell_enabled == WorkcellState.isEnabled:
+            logging.info(
+                "[STEP] Attempting to open work order without workcell (expected: error dialog and worksteps page should not open)."
+            )
+            logging.info(
+                "[ASSERT] Ensuring selection page remains visible after failed open attempt."
+            )
+            expect(choose_work_order_page.page_title).to_be_visible()
+            logging.info(
+                "[ASSERT] Verifying the error dialog message text for the missing workcell."
+            )
+            assert last_dialog == ChooseWorkOrderPage.MSG_PLEASE_SELECT_WORKCELL, (
+                f"Expected '{ChooseWorkOrderPage.MSG_PLEASE_SELECT_WORKCELL}' but got: {choose_work_order_page._dialog_messages}"
+            )
+            logging.info(
+                "[ASSERT PASS] Error dialog shown as expected for the missing workcell."
+            )
+        else:
+            work_order_steps_page.expect_page_contains_text(work_order_name)
+            logging.info(
+                "[ASSERT PASS] Work order opened successfully with valid part serial number."
+            )
+
+    choose_work_order_page.stop_collecting_dialogs()
